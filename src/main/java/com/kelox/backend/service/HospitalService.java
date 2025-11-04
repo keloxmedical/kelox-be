@@ -139,6 +139,20 @@ public class HospitalService {
     }
     
     /**
+     * Get hospital by name
+     */
+    @Transactional(readOnly = true)
+    public HospitalProfileResponse getHospitalByName(String name) {
+        log.info("Fetching hospital profile by name: {}", name);
+        
+        HospitalProfile hospital = hospitalProfileRepository.findByName(name)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Hospital profile not found with name: " + name));
+        
+        return HospitalProfileResponse.fromEntity(hospital);
+    }
+    
+    /**
      * Validate hospital request
      */
     private void validateHospitalRequest(CreateHospitalRequest request) {

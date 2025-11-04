@@ -45,6 +45,31 @@ public class HospitalController {
     }
     
     /**
+     * Get hospital profile by name
+     * Requires: Authorization Bearer token
+     */
+    @GetMapping("/by-name")
+    public ResponseEntity<HospitalProfileResponse> getHospitalByName(
+            @RequestParam String name,
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract token from Authorization header
+        String token = extractTokenFromHeader(authHeader);
+        
+        // Validate token
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(401).build();
+        }
+        
+        log.info("Fetching hospital profile by name: {}", name);
+        
+        // Get hospital profile by name
+        HospitalProfileResponse hospitalProfile = hospitalService.getHospitalByName(name);
+        
+        return ResponseEntity.ok(hospitalProfile);
+    }
+    
+    /**
      * Extract JWT token from Authorization header
      */
     private String extractTokenFromHeader(String authHeader) {

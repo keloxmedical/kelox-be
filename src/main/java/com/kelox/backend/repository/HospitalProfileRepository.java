@@ -13,5 +13,7 @@ public interface HospitalProfileRepository extends JpaRepository<HospitalProfile
     Optional<HospitalProfile> findByOwnerId(UUID ownerId);
     
     boolean existsByOwnerId(UUID ownerId);
+    
+    Optional<HospitalProfile> findByName(String name);
 }
 

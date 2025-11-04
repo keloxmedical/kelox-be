@@ -60,7 +60,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // Skip JWT filter for public endpoints
         return path.startsWith("/api/health") || 
                path.startsWith("/api/auth/login") ||
-               path.startsWith("/api/admin/");  // Admin uses different auth
+               path.startsWith("/api/admin/") ||  // Admin uses different auth
+               path.startsWith("/api/marketplace");  // Public marketplace endpoints
     }
 }
 
