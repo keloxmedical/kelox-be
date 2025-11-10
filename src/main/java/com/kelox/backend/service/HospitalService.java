@@ -1,13 +1,20 @@
 package com.kelox.backend.service;
 
+import com.kelox.backend.dto.CreateDeliveryAddressRequest;
 import com.kelox.backend.dto.CreateHospitalRequest;
+import com.kelox.backend.dto.DeliveryAddressDto;
 import com.kelox.backend.dto.HospitalProfileResponse;
+import com.kelox.backend.dto.UpdateDeliveryAddressRequest;
 import com.kelox.backend.entity.Contact;
+import com.kelox.backend.entity.DeliveryAddress;
 import com.kelox.backend.entity.HospitalProfile;
+import com.kelox.backend.entity.ShoppingCart;
 import com.kelox.backend.entity.User;
 import com.kelox.backend.exception.BusinessException;
 import com.kelox.backend.exception.ResourceNotFoundException;
+import com.kelox.backend.repository.DeliveryAddressRepository;
 import com.kelox.backend.repository.HospitalProfileRepository;
+import com.kelox.backend.repository.ShoppingCartRepository;
 import com.kelox.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +32,8 @@ public class HospitalService {
     
     private final HospitalProfileRepository hospitalProfileRepository;
     private final UserRepository userRepository;
+    private final ShoppingCartRepository shoppingCartRepository;
+    private final DeliveryAddressRepository deliveryAddressRepository;
     
     /**
      * Create a new hospital profile without an owner
@@ -61,6 +70,12 @@ public class HospitalService {
         
         HospitalProfile savedHospital = hospitalProfileRepository.save(hospital);
         log.info("Hospital profile created with ID: {}", savedHospital.getId());
+        
+        // Create shopping cart for the hospital
+        ShoppingCart shoppingCart = new ShoppingCart();
+        shoppingCart.setHospital(savedHospital);
+        shoppingCartRepository.save(shoppingCart);
+        log.info("Shopping cart created for hospital ID: {}", savedHospital.getId());
         
         return HospitalProfileResponse.fromEntity(savedHospital);
     }
@@ -178,6 +193,197 @@ public class HospitalService {
                     throw new BusinessException("Contact email is required");
                 }
             });
+        }
+    }
+    
+    /**
+     * Add delivery address to hospital
+     * Only hospital owner can add addresses
+     * Maximum 5 addresses per hospital
+     */
+    @Transactional
+    public DeliveryAddressDto addDeliveryAddress(Long hospitalId, CreateDeliveryAddressRequest request, UUID userId) {
+        log.info("Adding delivery address for hospital {} by user {}", hospitalId, userId);
+        
+        // Verify hospital exists and user is owner
+        HospitalProfile hospital = verifyHospitalOwner(userId, hospitalId);
+        
+        // Check maximum limit of 5 addresses
+        int currentCount = deliveryAddressRepository.countByHospitalId(hospitalId);
+        if (currentCount >= 5) {
+            throw new BusinessException("Hospital can have maximum 5 delivery addresses");
+        }
+        
+        // Validate request
+        validateDeliveryAddressRequest(request);
+        
+        // If setting as default, unset other defaults
+        if (Boolean.TRUE.equals(request.getIsDefault())) {
+            unsetDefaultAddress(hospitalId);
+        }
+        
+        // Create delivery address
+        DeliveryAddress address = new DeliveryAddress();
+        address.setHospital(hospital);
+        address.setStreetAddress(request.getStreetAddress());
+        address.setCity(request.getCity());
+        address.setState(request.getState());
+        address.setPostalCode(request.getPostalCode());
+        address.setCountry(request.getCountry());
+        address.setIsDefault(request.getIsDefault() != null ? request.getIsDefault() : false);
+        
+        DeliveryAddress savedAddress = deliveryAddressRepository.save(address);
+        log.info("Delivery address created with ID: {}", savedAddress.getId());
+        
+        return DeliveryAddressDto.fromEntity(savedAddress);
+    }
+    
+    /**
+     * Update delivery address
+     * Only hospital owner can update addresses
+     */
+    @Transactional
+    public DeliveryAddressDto updateDeliveryAddress(Long hospitalId, Long addressId, 
+                                                    UpdateDeliveryAddressRequest request, UUID userId) {
+        log.info("Updating delivery address {} for hospital {} by user {}", addressId, hospitalId, userId);
+        
+        // Verify hospital exists and user is owner
+        verifyHospitalOwner(userId, hospitalId);
+        
+        // Find address
+        DeliveryAddress address = deliveryAddressRepository.findById(addressId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Delivery address not found with ID: " + addressId));
+        
+        // Verify address belongs to hospital
+        if (!address.getHospital().getId().equals(hospitalId)) {
+            throw new BusinessException("Delivery address does not belong to this hospital");
+        }
+        
+        // Validate request
+        validateDeliveryAddressRequest(request);
+        
+        // If setting as default, unset other defaults
+        if (Boolean.TRUE.equals(request.getIsDefault()) && !address.getIsDefault()) {
+            unsetDefaultAddress(hospitalId);
+        }
+        
+        // Update address
+        address.setStreetAddress(request.getStreetAddress());
+        address.setCity(request.getCity());
+        address.setState(request.getState());
+        address.setPostalCode(request.getPostalCode());
+        address.setCountry(request.getCountry());
+        address.setIsDefault(request.getIsDefault() != null ? request.getIsDefault() : false);
+        
+        DeliveryAddress updatedAddress = deliveryAddressRepository.save(address);
+        log.info("Delivery address {} updated successfully", addressId);
+        
+        return DeliveryAddressDto.fromEntity(updatedAddress);
+    }
+    
+    /**
+     * Delete delivery address
+     * Only hospital owner can delete addresses
+     */
+    @Transactional
+    public void deleteDeliveryAddress(Long hospitalId, Long addressId, UUID userId) {
+        log.info("Deleting delivery address {} for hospital {} by user {}", addressId, hospitalId, userId);
+        
+        // Verify hospital exists and user is owner
+        verifyHospitalOwner(userId, hospitalId);
+        
+        // Find address
+        DeliveryAddress address = deliveryAddressRepository.findById(addressId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Delivery address not found with ID: " + addressId));
+        
+        // Verify address belongs to hospital
+        if (!address.getHospital().getId().equals(hospitalId)) {
+            throw new BusinessException("Delivery address does not belong to this hospital");
+        }
+        
+        deliveryAddressRepository.delete(address);
+        log.info("Delivery address {} deleted successfully", addressId);
+    }
+    
+    /**
+     * Get all delivery addresses for a hospital
+     * Only hospital owner can view addresses
+     */
+    @Transactional(readOnly = true)
+    public List<DeliveryAddressDto> getDeliveryAddresses(Long hospitalId, UUID userId) {
+        log.info("Fetching delivery addresses for hospital {} by user {}", hospitalId, userId);
+        
+        // Verify hospital exists and user is owner
+        verifyHospitalOwner(userId, hospitalId);
+        
+        return deliveryAddressRepository.findByHospitalId(hospitalId).stream()
+            .map(DeliveryAddressDto::fromEntity)
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Verify user is the hospital owner
+     */
+    private HospitalProfile verifyHospitalOwner(UUID userId, Long hospitalId) {
+        HospitalProfile hospital = hospitalProfileRepository.findById(hospitalId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Hospital profile not found with ID: " + hospitalId));
+        
+        if (hospital.getOwner() == null || !hospital.getOwner().getId().equals(userId)) {
+            throw new BusinessException(
+                "User is not authorized to manage this hospital");
+        }
+        
+        return hospital;
+    }
+    
+    /**
+     * Unset default flag on all addresses for a hospital
+     */
+    private void unsetDefaultAddress(Long hospitalId) {
+        deliveryAddressRepository.findByHospitalIdAndIsDefaultTrue(hospitalId)
+            .ifPresent(address -> {
+                address.setIsDefault(false);
+                deliveryAddressRepository.save(address);
+            });
+    }
+    
+    /**
+     * Validate delivery address request
+     */
+    private void validateDeliveryAddressRequest(Object request) {
+        String streetAddress = null;
+        String city = null;
+        String postalCode = null;
+        String country = null;
+        
+        if (request instanceof CreateDeliveryAddressRequest) {
+            CreateDeliveryAddressRequest req = (CreateDeliveryAddressRequest) request;
+            streetAddress = req.getStreetAddress();
+            city = req.getCity();
+            postalCode = req.getPostalCode();
+            country = req.getCountry();
+        } else if (request instanceof UpdateDeliveryAddressRequest) {
+            UpdateDeliveryAddressRequest req = (UpdateDeliveryAddressRequest) request;
+            streetAddress = req.getStreetAddress();
+            city = req.getCity();
+            postalCode = req.getPostalCode();
+            country = req.getCountry();
+        }
+        
+        if (streetAddress == null || streetAddress.trim().isEmpty()) {
+            throw new BusinessException("Street address is required");
+        }
+        if (city == null || city.trim().isEmpty()) {
+            throw new BusinessException("City is required");
+        }
+        if (postalCode == null || postalCode.trim().isEmpty()) {
+            throw new BusinessException("Postal code is required");
+        }
+        if (country == null || country.trim().isEmpty()) {
+            throw new BusinessException("Country is required");
         }
     }
 }

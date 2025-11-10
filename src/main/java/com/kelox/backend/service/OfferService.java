@@ -37,6 +37,7 @@ public class OfferService {
     private final HospitalProfileRepository hospitalProfileRepository;
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
+    private final ShopService shopService;
     
     /**
      * Create a new offer
@@ -259,6 +260,7 @@ public class OfferService {
     
     /**
      * Accept an offer
+     * Automatically adds all offer products to the hospital's shopping cart
      */
     @Transactional
     public OfferResponse acceptOffer(UUID offerId, UUID userId) {
@@ -281,7 +283,10 @@ public class OfferService {
         offer.setStatus(OfferStatus.ACCEPTED);
         Offer updatedOffer = offerRepository.save(offer);
         
-        log.info("Offer {} accepted successfully", offerId);
+        // Add all offer products to the hospital's shopping cart
+        shopService.addOfferProductsToShoppingCart(offer);
+        
+        log.info("Offer {} accepted successfully and products added to shopping cart", offerId);
         
         return OfferResponse.fromEntity(updatedOffer);
     }

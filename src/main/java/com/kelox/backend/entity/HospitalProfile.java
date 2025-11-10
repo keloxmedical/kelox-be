@@ -34,6 +34,12 @@ public class HospitalProfile {
 
     @OneToMany(mappedBy = "hospitalProfile", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Contact> contacts = new ArrayList<>();
+    
+    @OneToOne(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
+    private ShoppingCart shoppingCart;
+    
+    @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DeliveryAddress> deliveryAddresses = new ArrayList<>();
 
     // Helper method to add contact
     public void addContact(Contact contact) {
@@ -45,6 +51,18 @@ public class HospitalProfile {
     public void removeContact(Contact contact) {
         contacts.remove(contact);
         contact.setHospitalProfile(null);
+    }
+    
+    // Helper method to add delivery address
+    public void addDeliveryAddress(DeliveryAddress address) {
+        deliveryAddresses.add(address);
+        address.setHospital(this);
+    }
+    
+    // Helper method to remove delivery address
+    public void removeDeliveryAddress(DeliveryAddress address) {
+        deliveryAddresses.remove(address);
+        address.setHospital(null);
     }
 }
 

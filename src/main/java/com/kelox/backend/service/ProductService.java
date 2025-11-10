@@ -1,7 +1,9 @@
 package com.kelox.backend.service;
 
 import com.kelox.backend.dto.AddProductRequest;
+import com.kelox.backend.dto.AddToCartRequest;
 import com.kelox.backend.dto.ProductResponse;
+import com.kelox.backend.dto.ShoppingCartResponse;
 import com.kelox.backend.entity.HospitalProfile;
 import com.kelox.backend.entity.Product;
 import com.kelox.backend.exception.BusinessException;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,6 +27,7 @@ public class ProductService {
     
     private final ProductRepository productRepository;
     private final HospitalProfileRepository hospitalProfileRepository;
+    private final ShopService shopService;
     
     /**
      * Add a list of products for a hospital
@@ -153,6 +157,45 @@ public class ProductService {
         if (request.getUnit() == null) {
             throw new BusinessException("Unit is required (BOX or PIECE)");
         }
+    }
+    
+    /**
+     * Add product to shopping cart
+     * User must own a hospital
+     * Quantity must be available
+     */
+    @Transactional
+    public ShoppingCartResponse addToCart(AddToCartRequest request, UUID userId) {
+        log.info("User {} adding product {} (qty: {}) to cart", userId, request.getProductId(), request.getQuantity());
+        
+        // Validate request
+        if (request.getProductId() == null) {
+            throw new BusinessException("Product ID is required");
+        }
+        
+        if (request.getQuantity() == null || request.getQuantity() <= 0) {
+            throw new BusinessException("Quantity must be greater than 0");
+        }
+        
+        // Find the product
+        Product product = productRepository.findById(request.getProductId())
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Product not found with ID: " + request.getProductId()));
+        
+        // Validate quantity is available
+        if (request.getQuantity() > product.getQuantity()) {
+            throw new BusinessException(
+                "Requested quantity (" + request.getQuantity() + 
+                ") exceeds available quantity (" + product.getQuantity() + ")");
+        }
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        // Add product to cart via ShopService
+        return shopService.addProductToCart(hospital.getId(), product, request.getQuantity(), userId);
     }
 }
 
