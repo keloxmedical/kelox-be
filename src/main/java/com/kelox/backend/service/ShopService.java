@@ -1,16 +1,23 @@
 package com.kelox.backend.service;
 
+import com.kelox.backend.dto.OrderResponse;
 import com.kelox.backend.dto.ShoppingCartResponse;
+import com.kelox.backend.entity.DeliveryAddress;
 import com.kelox.backend.entity.HospitalProfile;
 import com.kelox.backend.entity.Offer;
 import com.kelox.backend.entity.OfferProduct;
+import com.kelox.backend.entity.Order;
+import com.kelox.backend.entity.OrderItem;
 import com.kelox.backend.entity.Product;
 import com.kelox.backend.entity.ShopItem;
 import com.kelox.backend.entity.ShoppingCart;
+import com.kelox.backend.enums.OrderStatus;
 import com.kelox.backend.enums.ShopItemType;
 import com.kelox.backend.exception.BusinessException;
 import com.kelox.backend.exception.ResourceNotFoundException;
+import com.kelox.backend.repository.DeliveryAddressRepository;
 import com.kelox.backend.repository.HospitalProfileRepository;
+import com.kelox.backend.repository.OrderRepository;
 import com.kelox.backend.repository.ShopItemRepository;
 import com.kelox.backend.repository.ShoppingCartRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +37,8 @@ public class ShopService {
     private final ShoppingCartRepository shoppingCartRepository;
     private final ShopItemRepository shopItemRepository;
     private final HospitalProfileRepository hospitalProfileRepository;
+    private final DeliveryAddressRepository deliveryAddressRepository;
+    private final OrderRepository orderRepository;
     
     /**
      * Add all products from an accepted offer to the creator's hospital shopping cart
@@ -209,6 +218,129 @@ public class ShopService {
             shopItemRepository.deleteAll(offerItems);
             log.info("Removed {} OFFER items (offerId: {}) from cart", offerItems.size(), offerId);
         }
+    }
+    
+    /**
+     * Request delivery price - creates an order from shopping cart
+     * User must own a hospital and have items in cart
+     * Status starts as CALCULATING_LOGISTICS
+     */
+    @Transactional
+    public OrderResponse requestDeliveryPrice(Long deliveryAddressId, UUID userId) {
+        log.info("User {} requesting delivery price for delivery address {}", userId, deliveryAddressId);
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        // Get shopping cart
+        ShoppingCart shoppingCart = shoppingCartRepository.findByHospitalId(hospital.getId())
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Shopping cart not found for hospital ID: " + hospital.getId()));
+        
+        // Validate cart has items
+        if (shoppingCart.getItems() == null || shoppingCart.getItems().isEmpty()) {
+            throw new BusinessException("Shopping cart is empty. Add items before creating an order.");
+        }
+        
+        // Validate delivery address
+        DeliveryAddress deliveryAddress = deliveryAddressRepository.findById(deliveryAddressId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Delivery address not found with ID: " + deliveryAddressId));
+        
+        // Verify delivery address belongs to the hospital
+        if (!deliveryAddress.getHospital().getId().equals(hospital.getId())) {
+            throw new BusinessException(
+                "Delivery address does not belong to this hospital");
+        }
+        
+        // Calculate products cost
+        Float productsCost = shoppingCart.getItems().stream()
+            .map(item -> item.getPrice() * item.getQuantity())
+            .reduce(0f, Float::sum);
+        
+        // Calculate platform fee (10% of products cost)
+        Float platformFee = productsCost * 0.10f;
+        
+        // Create order
+        Order order = new Order();
+        order.setHospital(hospital);
+        order.setDeliveryAddress(deliveryAddress);
+        order.setStatus(OrderStatus.CALCULATING_LOGISTICS);
+        order.setProductsCost(productsCost);
+        order.setPlatformFee(platformFee);
+        order.setDeliveryFee(null);  // Will be calculated by logistics system later
+        
+        // Map shop items to order items
+        for (ShopItem shopItem : shoppingCart.getItems()) {
+            OrderItem orderItem = new OrderItem();
+            orderItem.setProduct(shopItem.getProduct());
+            orderItem.setQuantity(shopItem.getQuantity());
+            orderItem.setPrice(shopItem.getPrice());
+            orderItem.setType(shopItem.getType());
+            
+            if (shopItem.getOffer() != null) {
+                orderItem.setOfferId(shopItem.getOffer().getId());
+            }
+            
+            order.addOrderItem(orderItem);
+        }
+        
+        // Save order
+        Order savedOrder = orderRepository.save(order);
+        log.info("Order created with ID: {} for hospital {}", savedOrder.getId(), hospital.getId());
+        
+        // Clear shopping cart
+        shoppingCart.clearItems();
+        shoppingCartRepository.save(shoppingCart);
+        log.info("Shopping cart cleared for hospital {}", hospital.getId());
+        
+        return OrderResponse.fromEntity(savedOrder);
+    }
+    
+    /**
+     * Get all pending orders for user's hospital
+     * Pending = all statuses except COMPLETED and CANCELED
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getPendingOrders(UUID userId) {
+        log.info("User {} fetching pending orders", userId);
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        // Get pending orders
+        List<Order> pendingOrders = orderRepository.findPendingOrdersByHospitalId(hospital.getId());
+        log.info("Found {} pending orders for hospital {}", pendingOrders.size(), hospital.getId());
+        
+        return pendingOrders.stream()
+            .map(OrderResponse::fromEntity)
+            .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Get all orders for user's hospital
+     * Includes all statuses, ordered by creation date descending
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> getAllOrders(UUID userId) {
+        log.info("User {} fetching all orders", userId);
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        // Get all orders
+        List<Order> orders = orderRepository.findByHospitalIdOrderByCreatedAtDesc(hospital.getId());
+        log.info("Found {} total orders for hospital {}", orders.size(), hospital.getId());
+        
+        return orders.stream()
+            .map(OrderResponse::fromEntity)
+            .collect(java.util.stream.Collectors.toList());
     }
 }
 

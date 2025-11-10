@@ -1,7 +1,11 @@
 package com.kelox.backend.controller;
 
 import com.kelox.backend.dto.AddToCartRequest;
+import com.kelox.backend.dto.OrderResponse;
+import com.kelox.backend.dto.RequestDeliveryPriceRequest;
 import com.kelox.backend.dto.ShoppingCartResponse;
+
+import java.util.List;
 import com.kelox.backend.service.ProductService;
 import com.kelox.backend.service.ShopService;
 import com.kelox.backend.util.JwtUtil;
@@ -103,6 +107,88 @@ public class ShopController {
         shopService.removeItemFromCart(hospitalId, itemId, userId);
         
         return ResponseEntity.noContent().build();
+    }
+    
+    /**
+     * Request delivery price - creates an order from shopping cart
+     * Requires: Authorization Bearer token
+     * User must own a hospital and have items in cart
+     * Creates order with status CALCULATING_LOGISTICS
+     * 
+     * POST /api/shop/request-delivery-price
+     */
+    @PostMapping("/request-delivery-price")
+    public ResponseEntity<OrderResponse> requestDeliveryPrice(
+            @RequestBody RequestDeliveryPriceRequest request,
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} requesting delivery price", userId);
+        
+        OrderResponse order = shopService.requestDeliveryPrice(request.getDeliveryAddressId(), userId);
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(order);
+    }
+    
+    /**
+     * Get all pending orders for authenticated user's hospital
+     * Pending = all statuses except COMPLETED and CANCELED
+     * Requires: Authorization Bearer token
+     * User must own a hospital
+     * 
+     * GET /api/shop/orders/pending
+     */
+    @GetMapping("/orders/pending")
+    public ResponseEntity<List<OrderResponse>> getPendingOrders(
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} fetching pending orders", userId);
+        
+        List<OrderResponse> orders = shopService.getPendingOrders(userId);
+        log.info("Found {} pending orders for user {}", orders.size(), userId);
+        
+        return ResponseEntity.ok(orders);
+    }
+    
+    /**
+     * Get all orders for authenticated user's hospital
+     * Includes all statuses (COMPLETED, CANCELED, etc.)
+     * Ordered by creation date descending
+     * Requires: Authorization Bearer token
+     * User must own a hospital
+     * 
+     * GET /api/shop/orders
+     */
+    @GetMapping("/orders")
+    public ResponseEntity<List<OrderResponse>> getAllOrders(
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} fetching all orders", userId);
+        
+        List<OrderResponse> orders = shopService.getAllOrders(userId);
+        log.info("Found {} total orders for user {}", orders.size(), userId);
+        
+        return ResponseEntity.ok(orders);
     }
     
     /**
