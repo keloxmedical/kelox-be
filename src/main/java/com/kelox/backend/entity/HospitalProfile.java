@@ -43,6 +43,9 @@ public class HospitalProfile {
     
     @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<DeliveryAddress> deliveryAddresses = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<WalletTransaction> walletTransactions = new ArrayList<>();
 
     // Helper method to add contact
     public void addContact(Contact contact) {

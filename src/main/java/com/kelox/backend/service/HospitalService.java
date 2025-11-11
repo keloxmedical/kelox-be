@@ -2,20 +2,27 @@ package com.kelox.backend.service;
 
 import com.kelox.backend.dto.CreateDeliveryAddressRequest;
 import com.kelox.backend.dto.CreateHospitalRequest;
+import com.kelox.backend.dto.CreateTransactionRequest;
 import com.kelox.backend.dto.DeliveryAddressDto;
 import com.kelox.backend.dto.HospitalProfileResponse;
 import com.kelox.backend.dto.UpdateDeliveryAddressRequest;
+import com.kelox.backend.dto.WalletTransactionResponse;
 import com.kelox.backend.entity.Contact;
 import com.kelox.backend.entity.DeliveryAddress;
 import com.kelox.backend.entity.HospitalProfile;
+import com.kelox.backend.entity.Order;
 import com.kelox.backend.entity.ShoppingCart;
 import com.kelox.backend.entity.User;
+import com.kelox.backend.entity.WalletTransaction;
+import com.kelox.backend.enums.TransactionType;
 import com.kelox.backend.exception.BusinessException;
 import com.kelox.backend.exception.ResourceNotFoundException;
 import com.kelox.backend.repository.DeliveryAddressRepository;
 import com.kelox.backend.repository.HospitalProfileRepository;
+import com.kelox.backend.repository.OrderRepository;
 import com.kelox.backend.repository.ShoppingCartRepository;
 import com.kelox.backend.repository.UserRepository;
+import com.kelox.backend.repository.WalletTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,6 +41,8 @@ public class HospitalService {
     private final UserRepository userRepository;
     private final ShoppingCartRepository shoppingCartRepository;
     private final DeliveryAddressRepository deliveryAddressRepository;
+    private final WalletTransactionRepository walletTransactionRepository;
+    private final OrderRepository orderRepository;
     
     /**
      * Create a new hospital profile without an owner
@@ -424,6 +433,137 @@ public class HospitalService {
             hospitalId, hospital.getBalance() - amount, newBalance);
         
         return HospitalProfileResponse.fromEntity(updatedHospital);
+    }
+    
+    /**
+     * Create wallet transaction for a hospital
+     * Admin only
+     * DEPOSIT: increases balance
+     * WITHDRAW: decreases balance
+     */
+    @Transactional
+    public WalletTransactionResponse createTransaction(Long hospitalId, CreateTransactionRequest request) {
+        log.info("Admin creating {} transaction of {} for hospital {}", 
+            request.getType(), request.getAmount(), hospitalId);
+        
+        // Find hospital
+        HospitalProfile hospital = hospitalProfileRepository.findById(hospitalId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Hospital profile not found with ID: " + hospitalId));
+        
+        // Validate request
+        if (request.getType() == null) {
+            throw new BusinessException("Transaction type is required (DEPOSIT or WITHDRAW)");
+        }
+        
+        if (request.getAmount() == null || request.getAmount() <= 0) {
+            throw new BusinessException("Amount must be greater than 0");
+        }
+        
+        // Get current balance
+        Float balanceBefore = hospital.getBalance();
+        Float balanceAfter;
+        
+        // Calculate new balance based on transaction type
+        if (request.getType() == TransactionType.DEPOSIT) {
+            balanceAfter = balanceBefore + request.getAmount();
+        } else { // WITHDRAW
+            balanceAfter = balanceBefore - request.getAmount();
+            
+            // Prevent negative balance
+            if (balanceAfter < 0) {
+                throw new BusinessException(
+                    "Insufficient balance. Current balance: " + balanceBefore + 
+                    ", Requested withdrawal: " + request.getAmount());
+            }
+        }
+        
+        // Find order if orderId is provided
+        Order order = null;
+        if (request.getOrderId() != null) {
+            order = orderRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Order not found with ID: " + request.getOrderId()));
+            
+            // For DEPOSIT: verify hospital is a seller in the order
+            // For WITHDRAW: verify hospital is the buyer (owns the order)
+            if (request.getType() == TransactionType.DEPOSIT) {
+                // Check if hospital sold any products in this order
+                boolean isSeller = order.getOrderItems().stream()
+                    .anyMatch(item -> item.getProduct() != null && 
+                                     item.getProduct().getSeller() != null &&
+                                     item.getProduct().getSeller().getId().equals(hospitalId));
+                
+                if (!isSeller) {
+                    throw new BusinessException(
+                        "Hospital is not a seller in this order. Cannot create DEPOSIT transaction.");
+                }
+            } else { // WITHDRAW
+                // Verify order belongs to the hospital (hospital is buyer)
+                if (!order.getHospital().getId().equals(hospitalId)) {
+                    throw new BusinessException(
+                        "Order does not belong to this hospital. Cannot create WITHDRAW transaction.");
+                }
+            }
+        }
+        
+        // Create transaction
+        WalletTransaction transaction = new WalletTransaction();
+        transaction.setHospital(hospital);
+        transaction.setType(request.getType());
+        transaction.setAmount(request.getAmount());
+        transaction.setDescription(request.getDescription());
+        transaction.setOrder(order);
+        transaction.setBalanceBefore(balanceBefore);
+        transaction.setBalanceAfter(balanceAfter);
+        
+        // Update hospital balance
+        hospital.setBalance(balanceAfter);
+        hospitalProfileRepository.save(hospital);
+        
+        // Save transaction
+        WalletTransaction savedTransaction = walletTransactionRepository.save(transaction);
+        
+        log.info("Transaction created with ID: {}. Hospital {} balance: {} -> {}", 
+            savedTransaction.getId(), hospitalId, balanceBefore, balanceAfter);
+        
+        return WalletTransactionResponse.fromEntity(savedTransaction);
+    }
+    
+    /**
+     * Get wallet transactions for a hospital
+     * Can be called by admin or hospital owner
+     */
+    @Transactional(readOnly = true)
+    public List<WalletTransactionResponse> getTransactions(Long hospitalId) {
+        log.info("Fetching wallet transactions for hospital {}", hospitalId);
+        
+        // Verify hospital exists
+        if (!hospitalProfileRepository.existsById(hospitalId)) {
+            throw new ResourceNotFoundException("Hospital profile not found with ID: " + hospitalId);
+        }
+        
+        return walletTransactionRepository.findByHospitalIdOrderByCreatedAtDesc(hospitalId).stream()
+            .map(WalletTransactionResponse::fromEntity)
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Get wallet transactions for user's hospital
+     * User must be hospital owner
+     */
+    @Transactional(readOnly = true)
+    public List<WalletTransactionResponse> getTransactionsForUser(UUID userId) {
+        log.info("User {} fetching wallet transactions for their hospital", userId);
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        return walletTransactionRepository.findByHospitalIdOrderByCreatedAtDesc(hospital.getId()).stream()
+            .map(WalletTransactionResponse::fromEntity)
+            .collect(Collectors.toList());
     }
 }
 

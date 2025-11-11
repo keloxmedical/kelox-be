@@ -6,6 +6,7 @@ import com.kelox.backend.dto.DeliveryAddressDto;
 import com.kelox.backend.dto.HospitalProfileResponse;
 import com.kelox.backend.dto.ProductResponse;
 import com.kelox.backend.dto.UpdateDeliveryAddressRequest;
+import com.kelox.backend.dto.WalletTransactionResponse;
 import com.kelox.backend.service.HospitalService;
 import com.kelox.backend.service.ProductService;
 import com.kelox.backend.util.JwtUtil;
@@ -220,6 +221,31 @@ public class HospitalController {
         );
         
         return ResponseEntity.status(HttpStatus.CREATED).body(products);
+    }
+    
+    /**
+     * Get wallet transactions for user's hospital
+     * Requires: Authorization Bearer token
+     * User must be the hospital owner
+     * 
+     * GET /api/hospitals/my-transactions
+     */
+    @GetMapping("/my-transactions")
+    public ResponseEntity<List<WalletTransactionResponse>> getMyTransactions(
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} fetching wallet transactions for their hospital", userId);
+        
+        List<WalletTransactionResponse> transactions = hospitalService.getTransactionsForUser(userId);
+        
+        return ResponseEntity.ok(transactions);
     }
     
     /**

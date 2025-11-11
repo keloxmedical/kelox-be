@@ -110,5 +110,38 @@ public class AdminHospitalController {
         HospitalProfileResponse response = hospitalService.updateBalance(hospitalId, request.getAmount());
         return ResponseEntity.ok(response);
     }
+    
+    /**
+     * Create wallet transaction for a hospital
+     * Requires: X-Admin-Secret header
+     * DEPOSIT: increases balance
+     * WITHDRAW: decreases balance
+     * 
+     * POST /api/admin/hospitals/{hospitalId}/transactions
+     */
+    @PostMapping("/{hospitalId}/transactions")
+    public ResponseEntity<WalletTransactionResponse> createTransaction(
+            @PathVariable Long hospitalId,
+            @RequestBody CreateTransactionRequest request) {
+        
+        log.info("Admin API: Creating {} transaction for hospital {}", request.getType(), hospitalId);
+        WalletTransactionResponse response = hospitalService.createTransaction(hospitalId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+    
+    /**
+     * Get all wallet transactions for a hospital
+     * Requires: X-Admin-Secret header
+     * 
+     * GET /api/admin/hospitals/{hospitalId}/transactions
+     */
+    @GetMapping("/{hospitalId}/transactions")
+    public ResponseEntity<List<WalletTransactionResponse>> getTransactions(
+            @PathVariable Long hospitalId) {
+        
+        log.info("Admin API: Fetching transactions for hospital {}", hospitalId);
+        List<WalletTransactionResponse> transactions = hospitalService.getTransactions(hospitalId);
+        return ResponseEntity.ok(transactions);
+    }
 }
 
