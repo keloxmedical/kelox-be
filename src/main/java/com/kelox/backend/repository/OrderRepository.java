@@ -25,5 +25,10 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     
     @Query("SELECT o FROM Order o WHERE o.hospital.id = :hospitalId AND o.status NOT IN ('COMPLETED', 'CANCELED') ORDER BY o.createdAt DESC")
     List<Order> findPendingOrdersByHospitalId(@Param("hospitalId") Long hospitalId);
+    
+    @Query("SELECT DISTINCT o FROM Order o JOIN o.orderItems oi WHERE oi.product.seller.id = :sellerHospitalId AND " +
+           "(o.status = 'IN_TRANSIT' OR o.status = 'COMPLETED' OR (o.status = 'CONFIRMING_PAYMENT' AND o.paid = true)) " +
+           "ORDER BY o.createdAt DESC")
+    List<Order> findSalesHistoryBySellerHospitalId(@Param("sellerHospitalId") Long sellerHospitalId);
 }
 

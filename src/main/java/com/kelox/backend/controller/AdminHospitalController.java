@@ -93,5 +93,22 @@ public class AdminHospitalController {
         List<ProductResponse> products = productService.getProductsByHospital(hospitalId);
         return ResponseEntity.ok(products);
     }
+    
+    /**
+     * Update hospital balance
+     * Requires: X-Admin-Secret header
+     * Amount can be positive (increase) or negative (decrease)
+     * 
+     * PUT /api/admin/hospitals/{hospitalId}/balance
+     */
+    @PutMapping("/{hospitalId}/balance")
+    public ResponseEntity<HospitalProfileResponse> updateBalance(
+            @PathVariable Long hospitalId,
+            @RequestBody UpdateBalanceRequest request) {
+        
+        log.info("Admin API: Updating balance for hospital {} by amount {}", hospitalId, request.getAmount());
+        HospitalProfileResponse response = hospitalService.updateBalance(hospitalId, request.getAmount());
+        return ResponseEntity.ok(response);
+    }
 }
 

@@ -1,6 +1,8 @@
 package com.kelox.backend.service;
 
+import com.kelox.backend.dto.OrderItemDto;
 import com.kelox.backend.dto.OrderResponse;
+import com.kelox.backend.dto.SalesHistoryResponse;
 import com.kelox.backend.dto.ShoppingCartResponse;
 import com.kelox.backend.entity.DeliveryAddress;
 import com.kelox.backend.entity.HospitalProfile;
@@ -340,6 +342,61 @@ public class ShopService {
         
         return orders.stream()
             .map(OrderResponse::fromEntity)
+            .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Get sales history for user's hospital (as seller)
+     * Shows orders where products from this hospital were sold
+     * Includes: IN_TRANSIT, COMPLETED, CONFIRMING_PAYMENT (if paid=true)
+     * Only shows items from the seller hospital in each order
+     */
+    @Transactional(readOnly = true)
+    public List<SalesHistoryResponse> getSalesHistory(UUID userId) {
+        log.info("User {} fetching sales history", userId);
+        
+        // Find user's hospital
+        HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "No hospital profile found for user ID: " + userId));
+        
+        // Get orders containing products from this hospital (as seller)
+        List<Order> orders = orderRepository.findSalesHistoryBySellerHospitalId(hospital.getId());
+        log.info("Found {} orders in sales history for hospital {}", orders.size(), hospital.getId());
+        
+        // Map to sales history response
+        return orders.stream()
+            .map(order -> {
+                SalesHistoryResponse response = new SalesHistoryResponse();
+                response.setOrderId(order.getId());
+                response.setCreatedAt(order.getCreatedAt());
+                response.setCompletedAt(order.getCompletedAt());
+                response.setStatus(order.getStatus());
+                response.setPaid(order.getPaid());
+                
+                if (order.getHospital() != null) {
+                    response.setBuyerHospitalId(order.getHospital().getId());
+                    response.setBuyerHospitalName(order.getHospital().getName());
+                }
+                
+                // Filter order items to only include products from the seller hospital
+                List<OrderItemDto> soldItems = order.getOrderItems().stream()
+                    .filter(item -> item.getProduct() != null && 
+                                   item.getProduct().getSeller() != null &&
+                                   item.getProduct().getSeller().getId().equals(hospital.getId()))
+                    .map(OrderItemDto::fromEntity)
+                    .collect(java.util.stream.Collectors.toList());
+                
+                response.setSoldItems(soldItems);
+                
+                // Calculate total sales amount for this hospital's items only
+                Float totalSales = soldItems.stream()
+                    .map(item -> item.getPrice() * item.getQuantity())
+                    .reduce(0f, Float::sum);
+                response.setTotalSalesAmount(totalSales);
+                
+                return response;
+            })
             .collect(java.util.stream.Collectors.toList());
     }
 }

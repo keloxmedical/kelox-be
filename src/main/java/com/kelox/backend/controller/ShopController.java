@@ -3,6 +3,7 @@ package com.kelox.backend.controller;
 import com.kelox.backend.dto.AddToCartRequest;
 import com.kelox.backend.dto.OrderResponse;
 import com.kelox.backend.dto.RequestDeliveryPriceRequest;
+import com.kelox.backend.dto.SalesHistoryResponse;
 import com.kelox.backend.dto.ShoppingCartResponse;
 
 import java.util.List;
@@ -189,6 +190,35 @@ public class ShopController {
         log.info("Found {} total orders for user {}", orders.size(), userId);
         
         return ResponseEntity.ok(orders);
+    }
+    
+    /**
+     * Get sales history for authenticated user's hospital (as seller)
+     * Shows orders where user's hospital sold products
+     * Includes: IN_TRANSIT, COMPLETED, CONFIRMING_PAYMENT (if paid=true)
+     * Only shows items from seller hospital in each order
+     * Requires: Authorization Bearer token
+     * User must own a hospital
+     * 
+     * GET /api/shop/sales-history
+     */
+    @GetMapping("/sales-history")
+    public ResponseEntity<List<SalesHistoryResponse>> getSalesHistory(
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} fetching sales history", userId);
+        
+        List<SalesHistoryResponse> salesHistory = shopService.getSalesHistory(userId);
+        log.info("Found {} sales records for user {}", salesHistory.size(), userId);
+        
+        return ResponseEntity.ok(salesHistory);
     }
     
     /**

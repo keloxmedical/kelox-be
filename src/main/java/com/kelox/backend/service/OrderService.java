@@ -2,10 +2,13 @@ package com.kelox.backend.service;
 
 import com.kelox.backend.dto.OrderResponse;
 import com.kelox.backend.entity.Order;
+import com.kelox.backend.entity.OrderItem;
+import com.kelox.backend.entity.Product;
 import com.kelox.backend.enums.OrderStatus;
 import com.kelox.backend.exception.BusinessException;
 import com.kelox.backend.exception.ResourceNotFoundException;
 import com.kelox.backend.repository.OrderRepository;
+import com.kelox.backend.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,6 +22,7 @@ import java.util.UUID;
 public class OrderService {
     
     private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
     
     /**
      * Update order status
@@ -97,6 +101,7 @@ public class OrderService {
     /**
      * Update order paid status
      * Admin only
+     * When setting paid=true, reduces product quantities from inventory
      */
     @Transactional
     public OrderResponse updatePaidStatus(UUID orderId, Boolean paid) {
@@ -107,6 +112,12 @@ public class OrderService {
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Order not found with ID: " + orderId));
         
+        // If setting to paid=true and was previously false, reduce product quantities
+        if (Boolean.TRUE.equals(paid) && !Boolean.TRUE.equals(order.getPaid())) {
+            log.info("Order {} is being marked as paid, reducing product quantities", orderId);
+            reduceProductQuantities(order);
+        }
+        
         // Update paid status
         order.setPaid(paid);
         Order updatedOrder = orderRepository.save(order);
@@ -114,6 +125,38 @@ public class OrderService {
         log.info("Order {} paid status updated to {}", orderId, paid);
         
         return OrderResponse.fromEntity(updatedOrder);
+    }
+    
+    /**
+     * Reduce product quantities based on order items
+     */
+    private void reduceProductQuantities(Order order) {
+        for (OrderItem orderItem : order.getOrderItems()) {
+            Product product = orderItem.getProduct();
+            
+            if (product == null) {
+                log.warn("OrderItem {} has no product, skipping quantity reduction", orderItem.getId());
+                continue;
+            }
+            
+            // Check if enough quantity is available
+            if (product.getQuantity() < orderItem.getQuantity()) {
+                throw new BusinessException(
+                    "Insufficient quantity for product " + product.getName() + 
+                    ". Available: " + product.getQuantity() + 
+                    ", Required: " + orderItem.getQuantity());
+            }
+            
+            // Reduce product quantity
+            int newQuantity = product.getQuantity() - orderItem.getQuantity();
+            product.setQuantity(newQuantity);
+            productRepository.save(product);
+            
+            log.info("Reduced product {} quantity by {} (new quantity: {})", 
+                product.getId(), orderItem.getQuantity(), newQuantity);
+        }
+        
+        log.info("Successfully reduced quantities for all products in order {}", order.getId());
     }
 }
 

@@ -31,6 +31,8 @@ public class ProductService {
     
     /**
      * Add a list of products for a hospital
+     * If product with same code + lot number exists: updates quantity (adds to existing)
+     * If product with same code but different lot number: creates new product
      */
     @Transactional
     public List<ProductResponse> addProductsForHospital(Long hospitalId, List<AddProductRequest> productRequests) {
@@ -41,20 +43,36 @@ public class ProductService {
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Hospital profile not found with ID: " + hospitalId));
         
-        // Validate and create products
-        List<Product> products = productRequests.stream()
-            .map(request -> {
-                validateProductRequest(request);
+        List<Product> processedProducts = new java.util.ArrayList<>();
+        
+        // Process each product request
+        for (AddProductRequest request : productRequests) {
+            validateProductRequest(request);
+            
+            // Check if product with same code + lot number exists for this hospital
+            java.util.Optional<Product> existingProduct = productRepository.findByCodeAndLotNumberAndSellerId(
+                request.getCode(), request.getLotNumber(), hospitalId);
+            
+            if (existingProduct.isPresent()) {
+                // Update existing product: add to quantity, don't update price
+                Product product = existingProduct.get();
+                int newQuantity = product.getQuantity() + request.getQuantity();
+                product.setQuantity(newQuantity);
                 
-                // Check for duplicate code + lot number for this hospital
-                if (productRepository.existsByCodeAndLotNumberAndSellerId(
-                        request.getCode(), request.getLotNumber(), hospitalId)) {
-                    throw new BusinessException(
-                        "Product with code '" + request.getCode() + 
-                        "' and lot number '" + request.getLotNumber() + 
-                        "' already exists for this hospital");
-                }
+                // Update other fields that might have changed (except price)
+                product.setName(request.getName());
+                product.setManufacturer(request.getManufacturer());
+                product.setExpiryDate(request.getExpiryDate());
+                product.setDescription(request.getDescription());
+                product.setUnit(request.getUnit());
                 
+                Product savedProduct = productRepository.save(product);
+                processedProducts.add(savedProduct);
+                log.info("Updated existing product {} (code: {}, lot: {}), added {} to quantity (new total: {})",
+                    product.getId(), request.getCode(), request.getLotNumber(), 
+                    request.getQuantity(), newQuantity);
+            } else {
+                // Create new product (same code but different lot number is OK)
                 Product product = new Product();
                 product.setName(request.getName());
                 product.setManufacturer(request.getManufacturer());
@@ -67,15 +85,16 @@ public class ProductService {
                 product.setUnit(request.getUnit());
                 product.setSeller(hospital);
                 
-                return product;
-            })
-            .collect(Collectors.toList());
+                Product savedProduct = productRepository.save(product);
+                processedProducts.add(savedProduct);
+                log.info("Created new product (code: {}, lot: {}, qty: {})",
+                    request.getCode(), request.getLotNumber(), request.getQuantity());
+            }
+        }
         
-        // Save all products
-        List<Product> savedProducts = productRepository.saveAll(products);
-        log.info("Successfully added {} products for hospital ID: {}", savedProducts.size(), hospitalId);
+        log.info("Successfully processed {} products for hospital ID: {}", processedProducts.size(), hospitalId);
         
-        return savedProducts.stream()
+        return processedProducts.stream()
             .map(ProductResponse::fromEntity)
             .collect(Collectors.toList());
     }

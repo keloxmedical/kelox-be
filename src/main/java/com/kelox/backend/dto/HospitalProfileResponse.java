@@ -18,6 +18,7 @@ public class HospitalProfileResponse {
     private String name;
     private String address;
     private String companyName;
+    private Float balance;
     private UUID ownerId;
     private String ownerEmail;
     private String ownerSolanaWallet;
@@ -29,6 +30,7 @@ public class HospitalProfileResponse {
         response.setName(hospital.getName());
         response.setAddress(hospital.getAddress());
         response.setCompanyName(hospital.getCompanyName());
+        response.setBalance(hospital.getBalance());
         
         if (hospital.getOwner() != null) {
             response.setOwnerId(hospital.getOwner().getId());

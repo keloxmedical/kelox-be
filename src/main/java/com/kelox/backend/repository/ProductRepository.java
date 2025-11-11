@@ -14,5 +14,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByCodeAndLotNumber(String code, String lotNumber);
     
     boolean existsByCodeAndLotNumberAndSellerId(String code, String lotNumber, Long sellerId);
+    
+    java.util.Optional<Product> findByCodeAndLotNumberAndSellerId(String code, String lotNumber, Long sellerId);
 }
 

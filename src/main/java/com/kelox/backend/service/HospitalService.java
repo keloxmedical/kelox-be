@@ -386,5 +386,44 @@ public class HospitalService {
             throw new BusinessException("Country is required");
         }
     }
+    
+    /**
+     * Update hospital balance
+     * Admin only
+     * Amount can be positive (increase) or negative (decrease)
+     */
+    @Transactional
+    public HospitalProfileResponse updateBalance(Long hospitalId, Float amount) {
+        log.info("Admin updating balance for hospital {} by amount {}", hospitalId, amount);
+        
+        // Find hospital
+        HospitalProfile hospital = hospitalProfileRepository.findById(hospitalId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Hospital profile not found with ID: " + hospitalId));
+        
+        // Validate amount
+        if (amount == null) {
+            throw new BusinessException("Amount is required");
+        }
+        
+        // Calculate new balance
+        Float newBalance = hospital.getBalance() + amount;
+        
+        // Prevent negative balance
+        if (newBalance < 0) {
+            throw new BusinessException(
+                "Insufficient balance. Current balance: " + hospital.getBalance() + 
+                ", Requested decrease: " + Math.abs(amount));
+        }
+        
+        // Update balance
+        hospital.setBalance(newBalance);
+        HospitalProfile updatedHospital = hospitalProfileRepository.save(hospital);
+        
+        log.info("Hospital {} balance updated from {} to {}", 
+            hospitalId, hospital.getBalance() - amount, newBalance);
+        
+        return HospitalProfileResponse.fromEntity(updatedHospital);
+    }
 }
 

@@ -28,6 +28,9 @@ public class HospitalProfile {
     @Column(nullable = false)
     private String companyName;
 
+    @Column(nullable = false)
+    private Float balance = 0f;
+
     @OneToOne
     @JoinColumn(name = "owner_id", referencedColumnName = "id", nullable = true, unique = true)
     private User owner;

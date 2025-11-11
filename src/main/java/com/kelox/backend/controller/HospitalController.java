@@ -1,10 +1,13 @@
 package com.kelox.backend.controller;
 
+import com.kelox.backend.dto.AddProductsRequest;
 import com.kelox.backend.dto.CreateDeliveryAddressRequest;
 import com.kelox.backend.dto.DeliveryAddressDto;
 import com.kelox.backend.dto.HospitalProfileResponse;
+import com.kelox.backend.dto.ProductResponse;
 import com.kelox.backend.dto.UpdateDeliveryAddressRequest;
 import com.kelox.backend.service.HospitalService;
+import com.kelox.backend.service.ProductService;
 import com.kelox.backend.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +25,7 @@ import java.util.UUID;
 public class HospitalController {
     
     private final HospitalService hospitalService;
+    private final ProductService productService;
     private final JwtUtil jwtUtil;
     
     /**
@@ -181,6 +185,41 @@ public class HospitalController {
         hospitalService.deleteDeliveryAddress(hospitalId, addressId, userId);
         
         return ResponseEntity.noContent().build();
+    }
+    
+    /**
+     * Add products to user's hospital
+     * Requires: Authorization Bearer token
+     * User must be the hospital owner
+     * If product with same code + lot number exists: adds to quantity
+     * If product with same code but different lot number: creates new product
+     * 
+     * POST /api/hospitals/my-products
+     */
+    @PostMapping("/my-products")
+    public ResponseEntity<List<ProductResponse>> addProductsToMyHospital(
+            @RequestBody AddProductsRequest request,
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} adding products to their hospital", userId);
+        
+        // Find user's hospital
+        HospitalProfileResponse hospital = hospitalService.getHospitalByOwnerId(userId);
+        
+        // Add products to the hospital
+        List<ProductResponse> products = productService.addProductsForHospital(
+            hospital.getId(), 
+            request.getProducts()
+        );
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(products);
     }
     
     /**
