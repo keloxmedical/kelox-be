@@ -1,0 +1,45 @@
+# Build artifacts
+build/
+bin/
+target/
+*.jar
+*.war
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+API_DOCUMENTATION.md
+FRONTEND_INTEGRATION.md
+HOSPITAL_API.md
+MIGRATION_GUIDE.md
+PRIVY_SIGNATURE_DEBUG.md
+README.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Elastic Beanstalk
+.elasticbeanstalk/
+.ebextensions/
+.ebignore
+
+# Deployment scripts
+deploy-*.sh
+
+# Gradle wrapper (we use the image's gradle)
+.gradle/
+gradlew
+gradlew.bat
+

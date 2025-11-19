@@ -22,14 +22,14 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(adminSecurityInterceptor)
-                .addPathPatterns("/admin/**")
-                .excludePathPatterns("/health");
+                .addPathPatterns("/api/admin/**")
+                .excludePathPatterns("/");
     }
     
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("http://localhost:3000", "http://localhost:3001")
+                .allowedOrigins("http://localhost:3000", "http://localhost:3001", "https://keloxmedical.com" ,"https://dev.keloxmedical.com")
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(true)

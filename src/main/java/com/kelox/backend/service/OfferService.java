@@ -38,6 +38,7 @@ public class OfferService {
     private final ProductRepository productRepository;
     private final UserRepository userRepository;
     private final ShopService shopService;
+    private final ChatOfferService chatOfferService;
     
     /**
      * Create a new offer
@@ -348,6 +349,9 @@ public class OfferService {
         offer.setStatus(OfferStatus.CANCELED);
         Offer canceledOffer = offerRepository.save(offer);
         
+        // Create system message
+        chatOfferService.createSystemMessage(offerId, "Offer canceled");
+        
         log.info("Offer {} canceled successfully", offerId);
         
         return OfferResponse.fromEntity(canceledOffer);
@@ -419,6 +423,82 @@ public class OfferService {
         log.info("Offer {} updated successfully", offerId);
         
         return OfferResponse.fromEntity(updatedOffer);
+    }
+    
+    /**
+     * Re-open a rejected offer with updated products
+     * Allows the creator to modify products and change status from REJECTED back to PENDING
+     */
+    @Transactional
+    public OfferResponse reopenRejectedOffer(UUID offerId, UpdateOfferRequest request, UUID userId) {
+        log.info("Re-opening rejected offer {} by user {}", offerId, userId);
+        
+        // Validate request
+        validateUpdateOfferRequest(request);
+        
+        // Find the offer
+        Offer offer = offerRepository.findById(offerId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "Offer not found with ID: " + offerId));
+        
+        // Verify the user is the creator
+        if (!offer.getCreator().getId().equals(userId)) {
+            throw new BusinessException(
+                "Only the creator can re-open an offer");
+        }
+        
+        // Check if offer is in rejected status
+        if (offer.getStatus() != OfferStatus.REJECTED) {
+            throw new BusinessException(
+                "Cannot re-open offer. Only rejected offers can be re-opened. Current status: " + offer.getStatus());
+        }
+        
+        // Clear existing offer products
+        offer.getOfferProducts().clear();
+        
+        // Add new/updated offer products
+        for (OfferProductDto productDto : request.getProducts()) {
+            // Validate product exists
+            Product product = productRepository.findById(productDto.getProductId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Product not found with ID: " + productDto.getProductId()));
+            
+            // Validate quantity and price
+            if (productDto.getQuantity() == null || productDto.getQuantity() <= 0) {
+                throw new BusinessException("Quantity must be greater than 0 for product: " + product.getName());
+            }
+            
+            if (productDto.getPrice() == null || productDto.getPrice() < 0) {
+                throw new BusinessException("Price must be non-negative for product: " + product.getName());
+            }
+            
+            // Check if requested quantity is available
+            if (productDto.getQuantity() > product.getQuantity()) {
+                throw new BusinessException(
+                    "Requested quantity (" + productDto.getQuantity() + 
+                    ") exceeds available quantity (" + product.getQuantity() + 
+                    ") for product: " + product.getName());
+            }
+            
+            OfferProduct offerProduct = new OfferProduct();
+            offerProduct.setProduct(product);
+            offerProduct.setQuantity(productDto.getQuantity());
+            offerProduct.setPrice(productDto.getPrice());
+            
+            offer.addOfferProduct(offerProduct);
+        }
+        
+        // Change status back to PENDING
+        offer.setStatus(OfferStatus.PENDING);
+        
+        Offer reopenedOffer = offerRepository.save(offer);
+        
+        // Create system message
+        chatOfferService.createSystemMessage(offerId, "Offer re-opened");
+        
+        log.info("Offer {} re-opened successfully with updated products", offerId);
+        
+        return OfferResponse.fromEntity(reopenedOffer);
     }
     
     /**

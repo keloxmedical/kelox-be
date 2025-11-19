@@ -1,0 +1,28 @@
+# Platform.sh Configuration (Alternative to AWS EB)
+# Uncomment and configure if deploying to Platform.sh instead
+
+# name: kelox-backend
+# type: 'java:17'
+# disk: 2048
+# 
+# hooks:
+#   build: |
+#     ./gradlew clean bootJar -x test
+#     mkdir -p target
+#     cp build/libs/*.jar target/app.jar
+# 
+# web:
+#   commands:
+#     start: 'java -Dspring.profiles.active=prod -jar target/app.jar'
+#   locations:
+#     '/':
+#       passthru: true
+# 
+# relationships:
+#   database: 'postgresql:postgresql'
+# 
+# mounts:
+#   'logs':
+#     source: local
+#     source_path: logs
+

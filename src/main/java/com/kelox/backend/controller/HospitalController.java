@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/hospitals")
+@RequestMapping("/api/hospitals")
 @RequiredArgsConstructor
 @Slf4j
 public class HospitalController {

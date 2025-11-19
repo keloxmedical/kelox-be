@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/shop")
+@RequestMapping("/api/shop")
 @RequiredArgsConstructor
 @Slf4j
 public class ShopController {

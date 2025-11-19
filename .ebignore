@@ -1,0 +1,19 @@
+# Don't upload these to Elastic Beanstalk
+.git/
+.gitignore
+.gradle/
+build/
+bin/
+src/
+.idea/
+.vscode/
+*.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+gradlew
+gradlew.bat
+gradle/
+
+# Only the JAR file will be uploaded
+

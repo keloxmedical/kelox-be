@@ -18,7 +18,7 @@ import java.util.Map;
  * Remove or disable in production
  */
 @RestController
-@RequestMapping("/test/auth")
+@RequestMapping("/api/test/auth")
 @RequiredArgsConstructor
 @Slf4j
 @Profile("!prod")  // Only active when NOT in production profile

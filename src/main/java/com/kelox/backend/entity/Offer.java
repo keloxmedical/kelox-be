@@ -32,6 +32,9 @@ public class Offer {
 
     @OneToMany(mappedBy = "offer", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OfferProduct> offerProducts = new ArrayList<>();
+    
+    @OneToMany(mappedBy = "offer", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OfferMessage> messages = new ArrayList<>();
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

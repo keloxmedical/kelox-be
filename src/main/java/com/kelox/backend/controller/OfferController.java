@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/offers")
+@RequestMapping("/api/offers")
 @RequiredArgsConstructor
 @Slf4j
 public class OfferController {
@@ -261,6 +261,34 @@ public class OfferController {
         log.info("User {} updating offer {}", userId, offerId);
         
         OfferResponse offer = offerService.updateOffer(offerId, request, userId);
+        
+        return ResponseEntity.ok(offer);
+    }
+    
+    /**
+     * Re-open a rejected offer with updated products
+     * Requires: Authorization Bearer token
+     * User must be the creator and offer must be rejected
+     * Changes status from REJECTED back to PENDING
+     * 
+     * PUT /api/offers/{offerId}/reopen
+     */
+    @PutMapping("/{offerId}/reopen")
+    public ResponseEntity<OfferResponse> reopenRejectedOffer(
+            @PathVariable UUID offerId,
+            @RequestBody UpdateOfferRequest request,
+            @RequestHeader("Authorization") String authHeader) {
+        
+        // Extract and validate token
+        String token = extractTokenFromHeader(authHeader);
+        if (!jwtUtil.validateToken(token) || jwtUtil.isTokenExpired(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UUID userId = jwtUtil.getUserIdFromToken(token);
+        log.info("User {} re-opening rejected offer {}", userId, offerId);
+        
+        OfferResponse offer = offerService.reopenRejectedOffer(offerId, request, userId);
         
         return ResponseEntity.ok(offer);
     }

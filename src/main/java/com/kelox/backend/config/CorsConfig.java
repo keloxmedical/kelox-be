@@ -20,7 +20,8 @@ public class CorsConfig {
         configuration.setAllowedOrigins(Arrays.asList(
             "http://localhost:3000",
             "http://localhost:3001",
-            "https://your-production-domain.com"  // Add your production domain here
+            "https://keloxmedical.com",
+            "https://dev.keloxmedical.com"
         ));
         
         // Allow all HTTP methods

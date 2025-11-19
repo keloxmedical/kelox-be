@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: kelox-be-dev
+  
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/kelox_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      idle-timeout: 600000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    
+server:
+  port: 5000
+
+# Admin API Security
+admin:
+  secret-code: ${ADMIN_SECRET_CODE:kelox-admin-dev-secret}
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:kelox-jwt-dev-secret-key-change-this}
+  expiration: ${JWT_EXPIRATION:2592000000}  # 30 days in milliseconds
+
+# Logging - More verbose for dev
+logging:
+  level:
+    root: INFO
+    com.kelox.backend: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management endpoints for health checks and debugging
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,beans,configprops
+  endpoint:
+    health:
+      show-details: always
+  health:
+    db:
+      enabled: true
+
