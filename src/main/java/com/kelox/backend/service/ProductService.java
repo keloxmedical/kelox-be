@@ -6,10 +6,15 @@ import com.kelox.backend.dto.ProductResponse;
 import com.kelox.backend.dto.ShoppingCartResponse;
 import com.kelox.backend.entity.HospitalProfile;
 import com.kelox.backend.entity.Product;
+import com.kelox.backend.entity.ShopItem;
+import com.kelox.backend.entity.ShoppingCart;
+import com.kelox.backend.enums.ShopItemType;
 import com.kelox.backend.exception.BusinessException;
 import com.kelox.backend.exception.ResourceNotFoundException;
 import com.kelox.backend.repository.HospitalProfileRepository;
 import com.kelox.backend.repository.ProductRepository;
+import com.kelox.backend.repository.ShopItemRepository;
+import com.kelox.backend.repository.ShoppingCartRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,6 +33,8 @@ public class ProductService {
     
     private final ProductRepository productRepository;
     private final HospitalProfileRepository hospitalProfileRepository;
+    private final ShoppingCartRepository shoppingCartRepository;
+    private final ShopItemRepository shopItemRepository;
     private final ShopService shopService;
     
     /**
@@ -181,7 +189,7 @@ public class ProductService {
     /**
      * Add product to shopping cart
      * User must own a hospital
-     * Quantity must be available
+     * Quantity must be available (including any quantity already in cart)
      */
     @Transactional
     public ShoppingCartResponse addToCart(AddToCartRequest request, UUID userId) {
@@ -201,17 +209,34 @@ public class ProductService {
             .orElseThrow(() -> new ResourceNotFoundException(
                 "Product not found with ID: " + request.getProductId()));
         
-        // Validate quantity is available
-        if (request.getQuantity() > product.getQuantity()) {
-            throw new BusinessException(
-                "Requested quantity (" + request.getQuantity() + 
-                ") exceeds available quantity (" + product.getQuantity() + ")");
-        }
-        
         // Find user's hospital
         HospitalProfile hospital = hospitalProfileRepository.findByOwnerId(userId)
             .orElseThrow(() -> new ResourceNotFoundException(
                 "No hospital profile found for user ID: " + userId));
+        
+        // Check if product already exists in cart and get current quantity
+        int existingQuantityInCart = 0;
+        Optional<ShoppingCart> cartOptional = shoppingCartRepository.findByHospitalId(hospital.getId());
+        if (cartOptional.isPresent()) {
+            Optional<ShopItem> existingItem = shopItemRepository.findByShoppingCartIdAndProductIdAndType(
+                cartOptional.get().getId(),
+                product.getId(),
+                ShopItemType.SINGLE
+            );
+            if (existingItem.isPresent()) {
+                existingQuantityInCart = existingItem.get().getQuantity();
+                log.info("Product {} already in cart with quantity {}", product.getId(), existingQuantityInCart);
+            }
+        }
+        
+        // Validate total quantity (existing in cart + new) against available quantity
+        int totalRequestedQuantity = existingQuantityInCart + request.getQuantity();
+        if (totalRequestedQuantity > product.getQuantity()) {
+            throw new BusinessException(
+                "Total requested quantity (" + totalRequestedQuantity + 
+                ") exceeds available quantity (" + product.getQuantity() + ")" +
+                (existingQuantityInCart > 0 ? ". You already have " + existingQuantityInCart + " in your cart." : ""));
+        }
         
         // Add product to cart via ShopService
         return shopService.addProductToCart(hospital.getId(), product, request.getQuantity(), userId);
